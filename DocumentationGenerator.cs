@@ -3,11 +3,32 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System;
 using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
-public static class DocumentationGenerator
+public class DocumentationGenerator(string API_URL, string API_KEY)
 {
-  public static async Task ProcessFile(string filePath)
+  private readonly string _API_URL = API_URL;
+  private readonly string _API_KEY = API_KEY;
+
+  public string CreatePrompt(SyntaxNode node)
+  {
+    return node switch
+    {
+      ClassDeclarationSyntax cls => $"Ответ должен быть на русском языке. Сгенерируйте краткое XML-резюме для тестового класса C# в 1 предложении. Класс {cls.Identifier.Text}",
+      MethodDeclarationSyntax method => $"Ответ должен быть на русском языке. Сгенерируйте краткое XML-резюме для метода теста NUnit в 1 предложении. Метод: {method.Identifier.Text}",
+      _ => string.Empty
+    };
+  }
+
+  public async Task<string> ProcessApiResponse(HttpResponseMessage response)
+  {
+    var json = await response.Content.ReadAsStringAsync();
+    return Regex.Match(json, "\"content\":\"(.*?)\"").Groups[1].Value;
+  }
+
+  public async Task ProcessFile(string filePath)
   {
     try
     {
@@ -32,7 +53,7 @@ public static class DocumentationGenerator
     }
   }
 
-  private static SyntaxNode AddSummary(SyntaxNode node)
+  private SyntaxNode AddSummary(SyntaxNode node)
   {
     return node switch
     {
@@ -44,14 +65,14 @@ public static class DocumentationGenerator
     };
   }
 
-  private static ClassDeclarationSyntax AddClassSummary(ClassDeclarationSyntax cls)
+  private ClassDeclarationSyntax AddClassSummary(ClassDeclarationSyntax cls)
   {
     var summary = GenerateSummary(cls).Result;
     return cls.WithLeadingTrivia(
         SyntaxFactory.ParseLeadingTrivia($"/// <summary>\n/// {summary}\n/// </summary>\n"));
   }
 
-  private static MethodDeclarationSyntax AddMethodSummary(MethodDeclarationSyntax method)
+  private MethodDeclarationSyntax AddMethodSummary(MethodDeclarationSyntax method)
   {
     var summary = GenerateSummary(method).Result;
     var trivia = SyntaxFactory.ParseLeadingTrivia($"/// <summary>\n/// {summary}\n/// </summary\n");
@@ -74,19 +95,23 @@ public static class DocumentationGenerator
         .Any(t => t.GetStructure() is DocumentationCommentTriviaSyntax);
   }
 
-  private static async Task<string> GenerateSummary(SyntaxNode node)
+  private async Task<string> GenerateSummary(SyntaxNode node)
   {
-    // Реализация генерации через API
-    return node switch
+    // Настройка HttpClientHandler для игнорирования проверки SSL
+    var handler = new HttpClientHandler
     {
-      ClassDeclarationSyntax cls => $"Tests for {cls.Identifier.Text.Replace("Tests", "")} functionality",
-      MethodDeclarationSyntax method => $"Tests {NormalizeMethodName(method.Identifier.Text)}",
-      _ => string.Empty
+      ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
     };
-  }
 
-  private static string NormalizeMethodName(string methodName)
-  {
-    return string.Join(" ", methodName.Split('_', StringSplitOptions.RemoveEmptyEntries));
+    using var httpClient = new HttpClient(handler);
+    httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_API_KEY}");
+
+    var prompt = CreatePrompt(node);
+    var response = await httpClient.PostAsync(_API_URL,
+        new StringContent($"{{\"model\": \"GigaChat\", \"messages\": [{{\"role\": \"user\", \"content\": \"{prompt}\"}}]}}",
+        Encoding.UTF8,
+        "application/json"));
+
+    return await ProcessApiResponse(response);
   }
 }
