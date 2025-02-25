@@ -5,7 +5,6 @@ using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
 
-
 public static class MainClass
 {
     // Настройки API
@@ -18,7 +17,7 @@ public static class MainClass
         Console.WriteLine("Hello, World!");
 
         // Обход всех .cs файлов в проекте
-        var files = Directory.GetFiles("../../", "*.cs", SearchOption.AllDirectories);
+        var files = Directory.GetFiles("../../../../", "*Tests.cs", SearchOption.AllDirectories);
 
         foreach (var file in files)
         {
