@@ -1,11 +1,8 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using System;
-using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 
 public class DocumentationGenerator(string API_URL, string API_KEY)
 {
@@ -16,10 +13,47 @@ public class DocumentationGenerator(string API_URL, string API_KEY)
   {
     return node switch
     {
-      ClassDeclarationSyntax cls => $"Ответ должен быть на русском языке. Сгенерируйте краткое XML-резюме для тестового класса C# в 1 предложении. Класс {cls.Identifier.Text}",
-      MethodDeclarationSyntax method => $"Ответ должен быть на русском языке. Сгенерируйте краткое XML-резюме для метода теста NUnit в 1 предложении. Метод: {method.Identifier.Text}",
+      ClassDeclarationSyntax cls =>
+          $"Сгенерируй XML summary на русском для класса в 1 предложении. " +
+          $"Атрибуты: {GetClassAttributes(cls)} ; " +
+          $"Имя класса: {cls.Identifier.Text}",
+
+      MethodDeclarationSyntax method =>
+          $"Сгенерируй XML summary на русском для метода в 1 предложении. " +
+          $"Атрибуты: {GetMethodAttributes(method)} ; " +
+          $"Сигнатура: {GetMethodSignature(method)}",
+
       _ => string.Empty
     };
+  }
+
+  // Вспомогательные методы для извлечения информации
+  private string GetClassAttributes(ClassDeclarationSyntax cls)
+  {
+    return cls.AttributeLists
+        .SelectMany(al => al.Attributes)
+        .Select(a => a.Name.ToString())
+        .DefaultIfEmpty("нет атрибутов")
+        .Aggregate((a, b) => $"{a}, {b}");
+  }
+
+  private string GetMethodAttributes(MethodDeclarationSyntax method)
+  {
+    return method.AttributeLists
+        .SelectMany(al => al.Attributes)
+        .Select(a => a.Name.ToString())
+        .DefaultIfEmpty("нет атрибутов")
+        .Aggregate((a, b) => $"{a}, {b}");
+  }
+
+  private string GetMethodSignature(MethodDeclarationSyntax method)
+  {
+    var parameters = method.ParameterList.Parameters
+        .Select(p => $"{p.Type} {p.Identifier}")
+        .DefaultIfEmpty("нет параметров")
+        .Aggregate((a, b) => $"{a}, {b}");
+
+    return $"{method.ReturnType} {method.Identifier}({parameters})";
   }
 
   public async Task<string> ProcessApiResponse(HttpResponseMessage response)
